@@ -1,15 +1,17 @@
-# Contribution [#]: [Issue Title]
+# Contribution #1: Examine Load Test Failure Modes
 
-**Contribution Number:** [1 / 2 / 3]  
-**Student:** [Your Name]  
-**Issue:** [GitHub issue link]  
-**Status:** [Phase I / Phase II / Phase III / Phase IV] [In Progress / Complete]
+**Contribution Number:** 1  
+**Student:** Abhishek Biju Das  
+**Issue:** https://github.com/diverse-cognitive-systems-group/dcs-simulation-engine/issues/208  
+**Status:** Phase I Complete
 
 ---
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
+This issue stood out to me because it sits at the intersection of systems reliability and AI — examining how a simulation engine behaves under concurrent load when calling external LLM providers is a genuinely interesting problem. Rate limits, stalled requests, and malformed model responses are failure modes I've encountered in AI-integrated systems before, and I want to develop a more rigorous methodology for diagnosing them.
+
+The task is also well-scoped for a first contribution: the load test infrastructure already exists in `scripts/`, so I can focus on analysis and documentation rather than building from scratch. The "help wanted" + "documentation" labels signal that the maintainers want a thorough written examination, which plays to my strengths in breaking down system behavior and communicating findings clearly.
 
 ---
 
@@ -17,19 +19,21 @@
 
 ### Problem Description
 
-[In your own words, what's broken or missing?]
+The project's load tests (located in `scripts/`) simulate concurrent gameplay sessions against the DCS simulation engine, running 10 clients × 10 games/client = 100 concurrent sessions by default. Each session covers an opening scene, 3 player turns, and a close. While the tests run and output HTML results to `docs/`, no one has yet systematically catalogued what failure modes actually occur — things like providers returning bad/empty responses, hitting rate limits, or requests stalling due to too-high concurrency.
 
 ### Expected Behavior
 
-[What should happen?]
+The load tests should complete all 100 concurrent sessions successfully, with the engine returning valid, non-empty responses from the AI provider for every turn. Results should be reproducible and documented so AI practitioners can understand the engine's reliability profile.
 
 ### Current Behavior
 
-[What actually happens?]
+Failure modes are unexamined and unreported. When the engine or underlying models are under load, issues such as empty provider responses, rate-limit errors, or request stalls may occur — but there is no documented analysis of when, why, or how often these happen.
 
 ### Affected Components
 
-[Which parts of the codebase are involved?]
+- `scripts/` — load test scripts
+- `docs/` — HTML output from load test runs
+- Engine core and AI provider integration layer (wherever LLM calls are made during gameplay sessions)
 
 ---
 
