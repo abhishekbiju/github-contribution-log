@@ -3,7 +3,7 @@
 **Contribution Number:** 1  
 **Student:** Abhishek Biju Das  
 **Issue:** https://github.com/diverse-cognitive-systems-group/dcs-simulation-engine/issues/208  
-**Status:** Phase II Complete
+**Status:** Phase III Complete
 
 ---
 
@@ -196,19 +196,70 @@ Because this is a docs-first contribution, "testing" means **verifying every doc
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Phase III — Reviewing conventions
 
-[What you built this week, challenges faced, decisions made]
+Per `CONTRIBUTING.md` this is a docs-focused contribution, so the relevant gates are
+the doc build (`make docs` → `mkdocs build --strict`) and the project's PR template
+(Overview / Changes / Test / Notes, referencing `Addresses issue #000`).
+`CONTRIBUTING.md` does **not** specify a commit-message format, so I followed
+**Conventional Commits** (the assignment's recommended default) with a `docs:` prefix —
+consistent with the repo's recent "Docs cleanup" history.
 
-### Week [Y] Progress
+### Phase III — Implementation
 
-[Continue documenting as you work]
+Built the deliverable from the UMPIRE plan:
+
+- **Added `docs/load_test_failure_modes.md`** — a reliability reference page that
+  catalogues each failure mode with: trigger, local repro command, engine code path,
+  client-visible symptom, current mitigation, and a recommendation. Covers all three
+  modes named in the issue plus the config-coupling gotcha I hit:
+  1. Defective / empty provider response → `ModelOutputContractError`, 1 corrective
+     retry, then opening-scene failure tears down the session (client sees only
+     `Session is closed`).
+  2. Rate limiting → `ModelProviderError` with provider `status_code`; 1 retry for
+     retryable errors via `_should_retry_llm_error`; documented as needing a live key.
+  3. Request stalling under concurrency → tail-latency signal (8 ms → 922 ms turn-phase
+     wait at 100 sessions, even with an instant mock model).
+  4. Config coupling → `409 Conflict` when run against a `registration_required: false`
+     config; fixed by using `load-test.yml`.
+- **Registered the page in `mkdocs.yml`** under the User Guide nav.
+
+**Decision:** I scoped Phase III to documentation only (no harness code changes). The
+issue is labelled `documentation` and asks to *examine and report* failure modes, and
+`scripts/load_test_and_report.py` already records the underlying data. I flagged the
+optional harness improvement (bucket errors by class; surface a failure category on the
+close frame) as a recommendation in the doc and a follow-up in the plan, to let
+maintainers decide whether they want code changes.
+
+### Verification
+
+- `make docs` (`mkdocs build --strict`) → exit 0, no warnings/errors; page renders at
+  `site/load_test_failure_modes.html`.
+- Re-ran every repro command in the doc against a clean offline server; output matches
+  what the page documents.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified / added:**
+  - `docs/load_test_failure_modes.md` (new)
+  - `mkdocs.yml` (nav entry)
+- **Key commit:** `docs: add load test failure modes reference page`
+  (`f20cc94`) — https://github.com/abhishekbiju/dcs-simulation-engine/commit/f20cc94
+- **Branch:** https://github.com/abhishekbiju/dcs-simulation-engine/tree/fix-issue-208
+- **Approach decisions:** offline `--fake-ai-response` repros (no API key/credits);
+  docs-only scope; mirrored existing docs-page style and `analyze_results.md` for the
+  reporting cross-link.
+
+### Self-review checklist (pre-Phase-IV)
+
+- [x] Change works — page builds and renders; repros verified.
+- [x] Docs build clean under `--strict`.
+- [x] No unnecessary changes — diff is only the new page + one nav line (build artifacts
+      `site/`, `runs/`, `docs/reports/` are gitignored; `personal_contribution.md` is
+      kept local via `.git/info/exclude`).
+- [x] Clean commit history — single, descriptive Conventional Commit.
+- [x] README (this file) updated with implementation summary, branch/commit links, and
+      testing notes.
 
 ---
 
