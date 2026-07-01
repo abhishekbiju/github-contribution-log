@@ -3,7 +3,7 @@
 **Contribution Number:** 1  
 **Student:** Abhishek Biju Das  
 **Issue:** https://github.com/diverse-cognitive-systems-group/dcs-simulation-engine/issues/208  
-**Status:** Phase III Complete
+**Status:** Phase IV Complete — PR submitted, awaiting review
 
 ---
 
@@ -265,15 +265,34 @@ maintainers decide whether they want code changes.
 
 ## Pull Request
 
-**PR Link:** [GitHub PR URL when submitted]
+**PR Link:** https://github.com/diverse-cognitive-systems-group/dcs-simulation-engine/pull/259
 
-**PR Description:** [Draft or final PR description - much of the content above can be adapted]
+**PR Title:** docs: examine and document load test failure modes
+
+**PR Description (summary):** Adds `docs/load_test_failure_modes.md`, a reliability
+reference cataloguing the load test's failure modes — defective/empty provider
+responses, rate limiting, request stalling under concurrency, and the
+`registration_required` config-coupling gotcha — each with trigger, offline repro
+(`--fake-ai-response`), engine code path, client symptom, mitigation, and a
+recommendation; wires the page into the mkdocs nav. Documentation-only, no behavior
+changes. Submitted from `abhishekbiju:fix-issue-208` → upstream `main`, `Closes #208`.
+
+**Pre-submission checks (2026-07-01):**
+- Branch up to date with `upstream/main` (+1 commit); no rebase needed.
+- `git diff upstream/main` reviewed — only the 2 intended files (+194 lines), no stray/debug changes.
+- `make docs` (`mkdocs build --strict`) clean; every repro command re-verified against a clean offline server.
 
 **Maintainer Feedback:**
-- [Date]: [Summary of feedback received]
-- [Date]: [How you addressed it]
+- _None yet — PR opened 2026-07-01, awaiting first review._
 
-**Status:** [Awaiting review / Iterating / Approved / Merged]
+**Status:** Awaiting review
+
+**Next steps:**
+- Watch the PR's CI checks and respond to review comments within ~24h.
+- If asked, open follow-up issues/PRs for the code recommendations noted in the doc
+  (surface a failure category on the close frame; add backoff/jitter for 429s).
+- Optionally @-mention a maintainer if there's no review within 5–7 business days
+  (identify the right reviewer from recent merged docs PRs / CODEOWNERS).
 
 ---
 
