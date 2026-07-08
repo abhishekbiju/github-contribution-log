@@ -317,3 +317,171 @@ changes. Submitted from `abhishekbiju:fix-issue-208` → upstream `main`, `Close
 - [Link to helpful documentation]
 - [Tutorial or Stack Overflow post that helped]
 - [GitHub issues or discussions that helped]
+
+---
+---
+
+# Contribution #2: Remove `make-list` and `make` Macros in Favor of `[]` and `[=>]` Syntax
+
+**Contribution Number:** 2  
+**Student:** Abhishek Biju Das  
+**Issue:** https://github.com/coalton-lang/coalton/issues/1846  
+**Status:** Phase I Complete
+
+---
+
+## Why I Chose This Issue
+
+Coalton is a statically typed functional language embedded in Common Lisp, and this issue sits at the heart of language ergonomics — migrating legacy macro-based list construction (`make-list`, `make`) to a native reader syntax (`[]`, `[=>]`) that the language introduced later. I chose it because it's a concrete, bounded refactor with real impact: the `make-list` macro appears throughout the standard library and examples, and replacing it with the cleaner bracket syntax makes the codebase more idiomatic and easier to read for newcomers. It's also labeled `good first issue`, which means the scope is well-defined and maintainer guidance is available.
+
+Beyond the mechanical replacement work, this issue requires understanding Coalton's collection builder system — how `[1 2 3]` desugars, when `the` is needed to disambiguate types for empty builders like `[]`, and why `[=>]` is the right replacement for association-style uses of `make`. That's a good forcing function for building a mental model of how Coalton's type inference and reader syntax interact, which will directly inform deeper contributions later.
+
+---
+
+## Understanding the Issue
+
+### Problem Description
+
+Coalton's standard library and examples still use the older `make-list` macro (and its alias `make`) in many places where the language now has first-class collection builder syntax. `(make-list 1 2 3)` and `(make 1 2 3)` both construct a homogeneous list, but the newer `[1 2 3]` bracket syntax does the same thing with less noise and no macro call. The issue asks contributors to find all callsites of `make-list` / `make` and replace them with `[]` (for lists/collections) or `[=>]` (for association/map types) wherever the substitution is semantically correct.
+
+### Expected Behavior
+
+After the change, `make-list` and `make` should no longer appear in standard library source files and examples where they can be replaced by bracket syntax. Code that reads `(define nums (make-list 1 2 3))` should instead read `(define nums [1 2 3])`. Empty-list forms like `(make-list)` should become `(the (List :a) [])` with an explicit type annotation to preserve type inference.
+
+### Current Behavior
+
+`make-list` is used throughout `library/list.ct` (e.g., in `insertions`, `permutations`, `combs`, `repeat`) and in example files and documentation snippets. The `make` macro in `library/list.ct` is defined purely as a synonym for `make-list`. Both remain in widespread use even though the bracket syntax is now the idiomatic way to write the same expressions.
+
+### Affected Components
+
+- `library/list.ct` — primary site; `make-list` appears ~10 times in function bodies and examples; `make` is defined here as a synonym macro
+- `library/prelude.lisp` / other library files — any imports or re-exports of `make-list`/`make`
+- `docs/manual/site/topics/whirlwind-tour.md` — tutorial examples using `make-list` that should be updated to show modern syntax
+- `examples/` — small example programs that may use `make-list`
+- Package export lists — once the macros are removed, their exports need to be cleaned up
+
+---
+
+## Reproduction Process
+
+### Environment Setup
+
+[Notes on setting up your local development environment - challenges you faced, how you solved them]
+
+### Steps to Reproduce
+
+1. [Step 1]
+2. [Step 2]
+3. [Observed result]
+
+### Reproduction Evidence
+
+- **Commit showing reproduction:** [Link to commit in your fork]
+- **Screenshots/logs:** [If applicable]
+- **My findings:** [What you discovered during reproduction]
+
+---
+
+## Solution Approach
+
+### Analysis
+
+[Your analysis of the root cause - what's causing the issue?]
+
+### Proposed Solution
+
+[High-level description of your fix approach]
+
+### Implementation Plan
+
+Using UMPIRE framework (adapted):
+
+**Understand:** [Restate the problem]
+
+**Match:** [What similar patterns/solutions exist in the codebase?]
+
+**Plan:** [Step-by-step implementation plan]
+1. [Modify file X to do Y]
+2. [Add function Z]
+3. [Update tests]
+
+**Implement:** [Link to your branch/commits as you work]
+
+**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
+
+**Evaluate:** [How will you verify it works?]
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+
+- [ ] Test case 1: [Description]
+- [ ] Test case 2: [Description]
+- [ ] Test case 3: [Description]
+
+### Integration Tests
+
+- [ ] Integration scenario 1
+- [ ] Integration scenario 2
+
+### Manual Testing
+
+[What you tested manually and results]
+
+---
+
+## Implementation Notes
+
+### Week [X] Progress
+
+[What you built this week, challenges faced, decisions made]
+
+### Week [Y] Progress
+
+[Continue documenting as you work]
+
+### Code Changes
+
+- **Files modified:** [List]
+- **Key commits:** [Links to important commits]
+- **Approach decisions:** [Why you chose certain approaches]
+
+---
+
+## Pull Request
+
+**PR Link:** [GitHub PR URL when submitted]
+
+**PR Description:** [Draft or final PR description - much of the content above can be adapted]
+
+**Maintainer Feedback:**
+- [Date]: [Summary of feedback received]
+- [Date]: [How you addressed it]
+
+**Status:** [Awaiting review / Iterating / Approved / Merged]
+
+---
+
+## Learnings & Reflections
+
+### Technical Skills Gained
+
+[What you learned technically]
+
+### Challenges Overcome
+
+[What was hard and how you solved it]
+
+### What I'd Do Differently Next Time
+
+[Reflection on your process]
+
+---
+
+## Resources Used
+
+- [Coalton Whirlwind Tour — Collection Builder Syntax](https://coalton-lang.github.io/manual/)
+- [Coalton Standard Library Reference](https://coalton-lang.github.io/reference/)
+- [GitHub issue #1846](https://github.com/coalton-lang/coalton/issues/1846)
