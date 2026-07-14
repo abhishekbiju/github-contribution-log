@@ -326,7 +326,7 @@ changes. Submitted from `abhishekbiju:fix-issue-208` → upstream `main`, `Close
 **Contribution Number:** 2  
 **Student:** Abhishek Biju Das  
 **Issue:** https://github.com/coalton-lang/coalton/issues/1846  
-**Status:** Phase I Complete
+**Status:** Phase II Complete
 
 ---
 
@@ -366,19 +366,59 @@ After the change, `make-list` and `make` should no longer appear in standard lib
 
 ### Environment Setup
 
-[Notes on setting up your local development environment - challenges you faced, how you solved them]
+This is a Common Lisp project, which meant a different toolchain than I'm used to. Setup involved:
+
+1. **Installing SBCL (Steel Bank Common Lisp).** The project requires SBCL as the Lisp implementation. On macOS this was straightforward: `brew install sbcl`. SBCL also requires GNU MPFR to run the full test suite (specifically the `Big-Float` tests) — installed via `brew install mpfr`. Without it, those tests are skipped rather than failing, so it's optional for this particular issue.
+
+2. **Installing Quicklisp.** Quicklisp is Common Lisp's package manager, analogous to `pip` or `npm`. I followed the [official installation steps](https://www.quicklisp.org/beta/#installation) — download `quicklisp.lisp`, load it into SBCL, and call `(quicklisp-quickstart:install)`. This creates a `~/quicklisp/` directory with the package registry.
+
+3. **Cloning and linking the repo.** After forking `coalton-lang/coalton`, I cloned my fork and symlinked it into Quicklisp's local-projects directory so Quicklisp can find it:
+   ```sh
+   git clone https://github.com/abhishekbiju/coalton.git
+   ln -s $(pwd)/coalton ~/quicklisp/local-projects/coalton
+   ```
+
+4. **Loading Coalton and running tests.** From an SBCL REPL:
+   ```lisp
+   (ql:quickload :coalton/tests)
+   (asdf:test-system :coalton/tests)
+   ```
+   All tests passed on the baseline `main` branch, confirming the environment is clean before I touch anything.
+
+**Key challenge:** The Coalton reader (which enables `[]` syntax) is only active inside `coalton-toplevel` / `coalton` forms. Outside those forms, `[...]` is just standard Common Lisp syntax with different semantics. This means the bracket replacements only make sense in `.ct` files and inside `coalton-toplevel` blocks in `.lisp` files — plain Lisp test helpers or package definitions that call `make-list` outside a `coalton` form must be left alone.
 
 ### Steps to Reproduce
 
-1. [Step 1]
-2. [Step 2]
-3. [Observed result]
+The "issue" here is not a runtime bug but a code-quality gap — the presence of deprecated macro usage throughout the codebase. Reproducing it means auditing all callsites:
+
+1. Grep the entire repo for `make-list` and `\bmake\b` to enumerate every occurrence:
+   ```sh
+   grep -rn "make-list" --include="*.ct" --include="*.lisp" --include="*.md" .
+   grep -rn "(make " --include="*.ct" --include="*.lisp" .
+   ```
+2. For each hit, determine whether it lives inside a `coalton-toplevel` / `coalton` form (eligible for bracket replacement) or in plain Lisp context (must be left as-is).
+3. Identify any empty-list cases — `(make-list)` with no arguments — which need a `(the (List :a) [])` wrapper to preserve type inference since `[]` alone is ambiguous (defaults to `Seq` if no context is available).
 
 ### Reproduction Evidence
 
-- **Commit showing reproduction:** [Link to commit in your fork]
-- **Screenshots/logs:** [If applicable]
-- **My findings:** [What you discovered during reproduction]
+- **Branch:** https://github.com/abhishekbiju/coalton/tree/issue-1846-remove-make-list
+- **Audit findings — complete callsite map:**
+
+  After grepping the codebase, the `make-list` / `make` usages I found and classified are:
+
+  | File | Line(s) | Usage | Eligible? | Notes |
+  |------|---------|-------|-----------|-------|
+  | `library/list.ct` | ~539 | `(make-list e y)` inside `concatMap` | Yes | 2-element list, → `[e y]` |
+  | `library/list.ct` | ~550 | `(make-list 1 2)` in `insertions` example | Yes | → `[1 2]` |
+  | `library/list.ct` | ~554 | `(make-list (make-list a))` nested | Yes | → `[[a]]` |
+  | `library/list.ct` | ~668 | `(make-list Nil)` in `permutations` | Yes | → `[Nil]` |
+  | `library/list.ct` | ~678 | `(make-list Nil)` base case | Yes | → `[Nil]` |
+  | `library/list.ct` | ~680 | `(make-list y (Cons x y))` | Yes | → `[y (Cons x y)]` |
+  | `library/list.ct` | ~690 | `(make-list Nil)` in `combs` | Yes | → `[Nil]` |
+  | `library/list.ct` | ~858–860 | `make` macro definition (synonym) | Remove | Entire macro to be deleted |
+  | `docs/manual/site/topics/whirlwind-tour.md` | ~211, ~274 | `(make-list 1 2 3 4)` in examples | Yes | Update to `[1 2 3 4]` |
+
+  No usages found in `examples/` `.ct` files or `library/prelude.lisp` beyond the export of `#:make` in `library/list.ct`'s package declaration (which will need to be removed alongside the macro).
 
 ---
 
@@ -386,49 +426,70 @@ After the change, `make-list` and `make` should no longer appear in standard lib
 
 ### Analysis
 
-[Your analysis of the root cause - what's causing the issue?]
+This is a **code modernization** issue, not a bug. The `make-list` macro predates Coalton's bracket reader syntax and served as the idiomatic way to construct lists. Since `[]` was introduced, `make-list` is now redundant — it expands to the same thing but is more verbose and inconsistent with how idiomatic Coalton code is written today. The `make` alias compounds the problem by adding a second name for the same deprecated pattern.
+
+The key subtlety is **type inference for empty builders.** When you write `(make-list)` (zero arguments), the resulting empty list is typed as `(List :a)` because the macro is declared to return a `List`. But `[]` alone defaults to `Seq :a` when no concrete type is inferred from context — so a bare `[]` replacement for `(make-list)` would silently change the inferred type. Every zero-argument `make-list` call needs to become `(the (List :a) [])`. In this codebase the zero-argument form doesn't appear (all callsites have at least one element), but it's important to verify this before declaring the sweep complete.
+
+A second consideration: `make-list` can appear in **docstring examples** embedded as strings inside `.ct` files. Those don't need functional replacement but should ideally be updated so the docs don't teach the old style.
 
 ### Proposed Solution
 
-[High-level description of your fix approach]
+1. Replace every in-scope `(make-list ...)` call in `.ct` files with the equivalent `[...]` bracket form.
+2. Delete the `make` macro definition from `library/list.ct` and remove `#:make` from the package export list.
+3. Remove `#:make-list` from the package export list (the underlying function can remain for backwards compatibility if maintainers prefer, or be removed entirely — I'll ask in the PR).
+4. Update the whirlwind-tour documentation examples to use bracket syntax.
+5. Run the full test suite to confirm nothing broke.
 
 ### Implementation Plan
 
 Using UMPIRE framework (adapted):
 
-**Understand:** [Restate the problem]
+**Understand:** The codebase has ~8 callsites of `make-list` in `library/list.ct` and 2 in documentation, plus the `make` synonym macro. All of these can be replaced with `[...]` bracket syntax. The `make` macro itself needs to be deleted. No runtime behavior changes — this is a pure syntactic refactor.
 
-**Match:** [What similar patterns/solutions exist in the codebase?]
+**Match:** The existing codebase already uses `[]` / `[=>]` syntax in newer files and in the style guide examples, so there's a clear precedent to follow. The `the` annotation pattern (`(the (List Integer) [])`) is documented in the whirlwind tour for exactly this case. Prior PRs in the repo that touch `library/list.ct` (e.g., iterators work, recent standard library additions) show the expected commit style and PR template format.
 
-**Plan:** [Step-by-step implementation plan]
-1. [Modify file X to do Y]
-2. [Add function Z]
-3. [Update tests]
+**Plan:**
+1. Create branch `issue-1846-remove-make-list` from `upstream/main`.
+2. In `library/list.ct`: replace each `(make-list ...)` callsite with `[...]`; delete the `make` macro definition (lines ~858–860); remove `#:make` from the package's `:export` list.
+3. Verify `#:make-list` export — decide with maintainer input whether to keep the underlying function (for any external code depending on it) or remove the export entirely. Draft a PR comment asking this upfront.
+4. In `docs/manual/site/topics/whirlwind-tour.md`: update the two `make-list` examples to bracket syntax.
+5. Run `(asdf:test-system :coalton/tests)` in SBCL — all tests must stay green.
+6. Run `make lint` if available in the repo's `Makefile` (checking now — will confirm).
+7. Open PR against `coalton-lang/coalton:main` referencing `Closes #1846`, following the repo's PR template.
 
-**Implement:** [Link to your branch/commits as you work]
+**Implement:** _(Phase III)_ Branch: https://github.com/abhishekbiju/coalton/tree/issue-1846-remove-make-list
 
-**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
+**Review:** Self-review checklist —
+- [ ] All `make-list` callsites in `.ct` files replaced with `[...]`
+- [ ] `make` macro definition deleted, `#:make` removed from exports
+- [ ] No zero-argument `(make-list)` converted to bare `[]` without a `the` wrapper
+- [ ] Whirlwind-tour examples updated
+- [ ] Test suite green (`asdf:test-system :coalton/tests`)
+- [ ] Diff contains only the intended changes — no stray reformatting or whitespace noise
+- [ ] PR description follows the repo's template and references the issue
 
-**Evaluate:** [How will you verify it works?]
+**Evaluate:** The change is correct if and only if the full test suite passes unchanged. Because this is a pure syntactic refactor (both forms compile to identical Lisp), any test failure would indicate either a missed edge case (e.g., an empty-list site that lost its `List` type) or a macro use in a plain-Lisp context that should have been left alone.
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests
+Because this is a syntactic refactor with no behavior change, the existing test suite is the primary verification mechanism.
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+### Regression Tests (existing suite)
 
-### Integration Tests
+- [x] Baseline: `(asdf:test-system :coalton/tests)` passes on `upstream/main` — confirmed during environment setup
+- [ ] Post-change: same command passes on `issue-1846-remove-make-list` with all `make-list` / `make` sites replaced
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+### Targeted Checks
+
+- [ ] Verify `library/list.ct` functions that were changed (`insertions`, `permutations`, `combs`) produce correct output — these have existing unit tests in `tests/list-tests.lisp`
+- [ ] Confirm `make` and `make-list` are no longer exported from the `COALTON/LIST` package after the change (check with `(find-symbol "MAKE" :coalton/list)` in the REPL)
+- [ ] Confirm the whirlwind-tour code examples still load cleanly if copy-pasted into a SBCL REPL with Coalton loaded
 
 ### Manual Testing
 
-[What you tested manually and results]
+I plan to load the modified `library/list.ct` in a SBCL REPL, evaluate a few of the changed function definitions interactively, and call them with sample inputs to confirm they still behave identically to the unmodified versions — e.g., `(coalton (insertions 0 [1 2]))` should still produce `[[0 1 2] [1 0 2] [1 2 0]]`.
 
 ---
 
