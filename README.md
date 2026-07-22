@@ -326,7 +326,7 @@ changes. Submitted from `abhishekbiju:fix-issue-208` → upstream `main`, `Close
 **Contribution Number:** 2  
 **Student:** Abhishek Biju Das  
 **Issue:** https://github.com/coalton-lang/coalton/issues/1846  
-**Status:** Phase II Complete
+**Status:** Phase III Complete
 
 ---
 
@@ -495,19 +495,175 @@ I plan to load the modified `library/list.ct` in a SBCL REPL, evaluate a few of 
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week 1 Progress — Audit, Environment, and Change Mapping
 
-[What you built this week, challenges faced, decisions made]
+After getting the environment running (SBCL + Quicklisp + Coalton loaded and tested — see Phase II), I spent this week doing a complete audit of the codebase and building a precise change map before touching a single line of code. The goal was to make sure I understood every occurrence so the actual edit pass is mechanical and low-risk.
 
-### Week [Y] Progress
+**Full grep audit:**
 
-[Continue documenting as you work]
+```sh
+grep -rn "make-list\|\bmake\b" \
+  --include="*.ct" --include="*.lisp" --include="*.md" \
+  . | grep -v ".git"
+```
+
+This surfaced three categories:
+
+1. **In-scope `.ct` callsites** (inside `coalton-toplevel`/`coalton` blocks — eligible for `[...]` replacement): all 8 occurrences in `library/list.ct`
+2. **The `make` macro definition itself** (lines 858–860 in `library/list.ct`): to be deleted
+3. **Documentation examples** (2 occurrences in `docs/manual/site/topics/whirlwind-tour.md`): to be updated to bracket syntax
+4. **Out-of-scope Lisp context** (0 found): confirmed no `make-list` calls in plain Lisp files outside a `coalton` form
+
+**Key decision made this week: whether to deprecate or hard-delete `make-list`.**
+
+`make-list` is a Coalton-defined macro that is exported from the `COALTON/LIST` package. Any external project that does `(ql:quickload :coalton)` and calls `make-list` directly would break if we remove the export. I reviewed merged PRs in the repo for precedent and found that past cleanup PRs (e.g., removing deprecated `do` syntax) removed the export immediately without a deprecation period. I'll flag this in the PR description and ask the maintainer to confirm — if they want a deprecation path I'll add a docstring warning first; otherwise I'll do the hard removal.
+
+**Second key decision: nested `make-list` calls.**
+
+One occurrence is `(make-list (make-list a))` — a list containing a single-element list. The replacement is `[[a]]`. I initially wrote `[(make-list a)]` as an intermediate step, then realised the inner call should also be replaced. The final form `[[a]]` is valid because Coalton's collection builder syntax is recursive — a bracket form inside another bracket form constructs the inner collection first, then the outer one. Verified this by checking the whirlwind-tour section on nested builders.
+
+### Week 2 Progress — Detailed Change Walkthrough
+
+**File: `library/list.ct`**
+
+Below is the exact before/after for every change. Line numbers reference the upstream `main` branch at the time of the audit.
+
+---
+
+**Change 1** — `concatMap` internal helper (~line 539):
+```lisp
+;; Before
+((Cons x xs) (Cons x (concatMap (fn (y) (make-list e y)) xs)))))
+
+;; After
+((Cons x xs) (Cons x (concatMap (fn (y) [e y]) xs)))))
+```
+Straightforward 2-element list. No type annotation needed — the surrounding `Cons` and the function's declared return type (`List :a`) give the compiler enough context.
+
+---
+
+**Change 2** — `insertions` inline example in docstring (~line 550):
+```lisp
+;; Before
+(insertions 0 (make-list 1 2))
+
+;; After
+(insertions 0 [1 2])
+```
+This is inside a docstring example (a string literal), not live code — but updating it is the right call so the docs don't teach old style. No compilation impact.
+
+---
+
+**Change 3** — Nested `make-list` in `insertions` base case (~line 554):
+```lisp
+;; Before
+((Nil)       (make-list (make-list a)))
+
+;; After
+((Nil)       [[a]])
+```
+The outer brackets produce a `(List (List :a))`; the inner brackets produce the `(List :a)`. Both infer correctly from the match arm's declared return type.
+
+---
+
+**Change 4, 5** — `permutations` base cases (~lines 668, 678):
+```lisp
+;; Before (two separate occurrences, same pattern)
+(make-list Nil)
+
+;; After
+[Nil]
+```
+`Nil` is the `List` constructor for an empty list. `[Nil]` produces a `(List (List :a))` — a one-element list whose single element is itself an empty list. The surrounding match context types this correctly.
+
+---
+
+**Change 6** — `combs` recursive case (~line 680):
+```lisp
+;; Before
+(concatMap (fn (y) (make-list y (Cons x y))) (combs xs))
+
+;; After
+(concatMap (fn (y) [y (Cons x y)]) (combs xs))
+```
+Two-element list. `y` is typed `(List :a)` from the enclosing function; `Cons x y` is also `(List :a)`. The bracket form `[y (Cons x y)]` infers to `(List (List :a))` correctly.
+
+---
+
+**Change 7** — `combs` base case (~line 690):
+```lisp
+;; Before
+(cond ((== 0 n) (make-list Nil))
+
+;; After
+(cond ((== 0 n) [Nil])
+```
+Same pattern as changes 4–5 above.
+
+---
+
+**Change 8** — Delete the `make` macro entirely (~lines 858–860):
+```lisp
+;; Delete this block entirely:
+(define-expression-macro make (cl:&rest elements)
+  "Make a homogeneous list of `elements`. Synonym for `coalton:make-list`."
+  `(coalton:make-list ,@elements))
+```
+And remove `#:make` from the package's `:export` list in the same file's `defpackage` block.
+
+---
+
+**Change 9** — Package export cleanup.
+
+In `library/list.ct`, the `defpackage` (or equivalent) block that exports `COALTON/LIST` symbols includes `#:make-list` and `#:make`. Both lines get removed. The decision on whether the underlying compiled function backing `make-list` is also removed or just unexported will follow maintainer guidance — the macro itself is definitely gone.
+
+---
+
+**File: `docs/manual/site/topics/whirlwind-tour.md`**
+
+Two occurrences around lines 211 and 274:
+```lisp
+;; Before (line ~211)
+(define z (map (fn (x) (+ 2 x)) (make-list 1 2 3 4)))
+(define z-short (map ƒx.(+ 2 x) (make-list 1 2 3 4))))
+
+;; After
+(define z (map (fn (x) (+ 2 x)) [1 2 3 4]))
+(define z-short (map ƒx.(+ 2 x) [1 2 3 4])))
+```
+
+```lisp
+;; Before (line ~274)
+;; Lists can be created with the make-list macro
+(define nums (make-list 2 3 4 5))
+
+;; After
+;; Lists can be created with bracket syntax
+(define nums [2 3 4 5])
+```
+
+---
+
+**Summary of files to be modified:**
+
+| File | Changes |
+|------|---------|
+| `library/list.ct` | 7 `make-list` → `[...]` replacements; delete `make` macro block; remove 2 package exports |
+| `docs/manual/site/topics/whirlwind-tour.md` | 2 example replacements + 1 comment update |
+
+**Total diff size:** ~20 lines changed/removed across 2 files. Clean, minimal, no collateral changes.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified:**
+  - `library/list.ct` — macro callsite replacements, macro deletion, export cleanup
+  - `docs/manual/site/topics/whirlwind-tour.md` — example modernization
+- **Key commits:** _(Phase IV — not yet pushed)_
+- **Approach decisions:**
+  - Chose hard removal over deprecation, pending maintainer confirmation in PR
+  - Replaced nested `(make-list (make-list a))` as `[[a]]` rather than leaving inner call as an intermediate step — cleaner and consistent
+  - Updated docstring examples even though they aren't compiled — leaving old syntax in docs would undermine the point of the change
+  - Did not touch any `.lisp` files outside `coalton-toplevel` blocks — the Coalton reader is not active there and `[...]` would have different semantics
 
 ---
 
